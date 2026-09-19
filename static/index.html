@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>لوحة الرؤية الحاسوبية</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  html, body { height: 100%; }
+  body { font-family: 'Cairo', system-ui, sans-serif; }
+  /* Arabic must shape + order correctly everywhere, including canvas labels. */
+  * { unicode-bidi: plaintext; }
+  #log::-webkit-scrollbar, #events::-webkit-scrollbar { width: 6px; }
+  #log::-webkit-scrollbar-thumb,
+  #events::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+  /* captions are two sentences now — let long Arabic runs wrap instead of overflowing */
+  #log .caption-text { overflow-wrap: anywhere; }
+</style>
+</head>
+<body class="bg-slate-950 text-slate-100 h-full">
+
+<div class="flex flex-col h-full">
+
+  <!-- main area: RTL means the first child renders on the RIGHT -->
+  <div class="flex flex-1 min-h-0 gap-3 p-3">
+
+    <!-- ===== right column (~35%) ===== -->
+    <aside class="w-[35%] flex flex-col gap-3 min-h-0">
+
+      <!-- counters -->
+      <section class="bg-slate-900 rounded-xl p-4 border border-slate-800 shrink-0">
+        <h2 class="text-lg font-bold mb-3 text-emerald-400">العناصر المكتشفة</h2>
+        <div id="counters" class="flex flex-wrap gap-2 text-sm">
+          <span class="text-slate-500">لا توجد عناصر بعد…</span>
+        </div>
+      </section>
+
+      <!-- event feed: what appeared and what left -->
+      <section class="bg-slate-900 rounded-xl p-4 border border-slate-800 shrink-0 flex flex-col">
+        <h2 class="text-lg font-bold mb-2 text-amber-400">أحداث المشهد</h2>
+        <div id="events" class="overflow-y-auto space-y-1 pl-1 text-sm" style="max-height: 9rem">
+          <p class="text-slate-500">لا توجد أحداث بعد…</p>
+        </div>
+      </section>
+
+      <!-- caption log -->
+      <section class="bg-slate-900 rounded-xl p-4 border border-slate-800 flex-1 min-h-0 flex flex-col">
+        <h2 class="text-lg font-bold mb-3 text-sky-400">وصف المشهد</h2>
+        <div id="log" class="flex-1 overflow-y-auto space-y-2 pl-1">
+          <p class="text-slate-500 text-sm">في انتظار أول وصف…</p>
+        </div>
+      </section>
+
+    </aside>
+
+    <!-- ===== left column (~65%): video + overlay ===== -->
+    <main class="w-[65%] bg-slate-900 rounded-xl border border-slate-800 relative overflow-hidden flex items-center justify-center">
+      <video id="video" autoplay playsinline muted class="max-w-full max-h-full"></video>
+      <canvas id="overlay" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+
+      <div id="banner" class="absolute inset-0 bg-slate-950/90 flex items-center justify-center p-8 text-center">
+        <div>
+          <p id="bannerTitle" class="text-2xl font-bold mb-2">جارٍ تحميل النماذج…</p>
+          <p id="bannerBody" class="text-slate-400">قد يستغرق هذا دقيقة عند أول تشغيل.</p>
+        </div>
+      </div>
+    </main>
+
+  </div>
+
+  <!-- ===== footer ===== -->
+  <footer class="shrink-0 bg-slate-900 border-t border-slate-800 px-4 py-2 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-400">
+    <span>معدل الكشف: <b id="fps" class="text-emerald-400">—</b> إطار/ث</span>
+    <span>زمن آخر وصف: <b id="lat" class="text-sky-400">—</b> مللي ثانية</span>
+    <span>نموذج الكشف: <b id="mDet" class="text-slate-200">RF-DETR Nano</b></span>
+    <span>النموذج اللغوي: <b id="mVlm" class="text-slate-200">Qwen2.5-VL-3B-4bit</b></span>
+    <span id="conn" class="text-amber-400">غير متصل</span>
+  </footer>
+
+</div>
+
+<script>
+const SEND_FPS   = 10;
+const SEND_WIDTH = 640;
+/* How long a track stays counted after its last box. Mirrors the server's
+   ~15-frame miss tolerance, and is what stops the counters flickering. */
+const COUNT_HOLD_MS = 1500;
+const MAX_EVENT_ROWS = 20;
+
+const video   = document.getElementById('video');
+const overlay = document.getElementById('overlay');
+const octx    = overlay.getContext('2d');
+const grab    = document.createElement('canvas');
+const gctx    = grab.getContext('2d');
+
+const el = id => document.getElementById(id);
+let ws = null, streamOk = false, lastDet = null, sending = false, cameraError = false;
+
+/* ---------------- banner ---------------- */
+function banner(title, body, tone='slate') {
+  // a camera failure is unrecoverable without user action — never paper over it
+  if (cameraError && tone !== 'error') return;
+  el('bannerTitle').textContent = title;
+  el('bannerBody').textContent  = body || '';
+  el('bannerTitle').className = 'text-2xl font-bold mb-2 ' +
+    (tone === 'error' ? 'text-rose-400' : 'text-slate-100');
+  el('banner').classList.remove('hidden');
+}
+function hideBanner() { if (!cameraError) el('banner').classList.add('hidden'); }
+
+/* ---------------- camera ---------------- */
+async function startCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+    streamOk = true;
+  } catch (err) {
+    let msg = 'تعذّر الوصول إلى الكاميرا.';
+    if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError'))
+      msg = 'تم رفض إذن الكاميرا. افتح إعدادات النظام ← الخصوصية والأمان ← الكاميرا وفعّل المتصفح، ثم أعد تحميل الصفحة.';
+    else if (err && err.name === 'NotFoundError')
+      msg = 'لم يتم العثور على كاميرا متصلة بالجهاز.';
+    else if (err && err.name === 'NotReadableError')
+      msg = 'الكاميرا مستخدمة من تطبيق آخر. أغلق التطبيقات الأخرى وأعد تحميل الصفحة.';
+    streamOk = false;
+    cameraError = true;
+    banner('خطأ في الكاميرا', msg, 'error');
+  }
+}
+
+/* ---------------- websocket ---------------- */
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen = () => {
+    el('conn').textContent = 'متصل'; el('conn').className = 'text-emerald-400';
+    tracks.clear();          // a fresh connection means a fresh SceneState, ids restart at 1
+    drawCounters();
+  };
+
+  ws.onmessage = ev => {
+    const m = JSON.parse(ev.data);
+    if (m.type === 'status') onStatus(m);
+    else if (m.type === 'detection') onDetection(m);
+    else if (m.type === 'events') onEvents(m);
+    else if (m.type === 'caption') onCaption(m);
+  };
+
+  ws.onclose = () => {
+    el('conn').textContent = 'غير متصل';
+    el('conn').className = 'text-amber-400';
+    setTimeout(connect, 1500);   // retry until the models finish loading
+  };
+  ws.onerror = () => ws.close();
+}
+
+function onStatus(m) {
+  if (m.state === 'ready') {
+    if (m.detector) el('mDet').textContent = m.detector;
+    if (m.vlm)      el('mVlm').textContent = m.vlm;
+    if (streamOk) hideBanner();
+    if (!sending) { sending = true; setInterval(sendFrame, 1000 / SEND_FPS); }
+  } else if (m.state === 'error') {
+    banner('فشل تحميل النماذج', m.message || '', 'error');
+  } else {
+    banner('جارٍ تحميل النماذج…', m.message || 'قد يستغرق هذا دقيقة عند أول تشغيل.');
+  }
+}
+
+/* ---------------- frame sending ---------------- */
+function sendFrame() {
+  if (!streamOk || !ws || ws.readyState !== WebSocket.OPEN) return;
+  if (ws.bufferedAmount > 512 * 1024) return;     // don't build a backlog
+  if (!video.videoWidth) return;
+
+  const w = SEND_WIDTH;
+  const h = Math.round(video.videoHeight * (w / video.videoWidth));
+  if (grab.width !== w) { grab.width = w; grab.height = h; }
+  gctx.drawImage(video, 0, 0, w, h);
+  grab.toBlob(b => b && b.arrayBuffer().then(buf => {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(buf);
+  }), 'image/jpeg', 0.6);
+}
+
+/* ---------------- detections ---------------- */
+/* track_id -> { label_ar, seen } — the client's copy of the server's world model */
+const tracks = new Map();
+
+function onDetection(m) {
+  lastDet = m;
+  el('fps').textContent = m.fps.toFixed(1);
+  drawBoxes();
+
+  const now = performance.now();
+  for (const b of m.boxes) {
+    if (b.track_id != null) tracks.set(b.track_id, { label_ar: b.label_ar, seen: now });
+  }
+  drawCounters();
+}
+
+const PALETTE = ['#34d399','#38bdf8','#fbbf24','#f472b6','#a78bfa','#fb7185','#4ade80','#22d3ee'];
+const colorFor = s => PALETTE[[...s].reduce((a,c)=>a+c.charCodeAt(0),0) % PALETTE.length];
+
+function drawBoxes() {
+  const r = video.getBoundingClientRect();
+  const p = overlay.parentElement.getBoundingClientRect();
+  if (overlay.width !== p.width || overlay.height !== p.height) {
+    overlay.width = p.width; overlay.height = p.height;
+  }
+  octx.clearRect(0, 0, overlay.width, overlay.height);
+  if (!lastDet || !lastDet.boxes.length) return;
+
+  // map backend frame coords -> the on-screen video rectangle
+  const sx = r.width / lastDet.w, sy = r.height / lastDet.h;
+  const ox = r.left - p.left,     oy = r.top - p.top;
+
+  octx.font = '600 15px Cairo, sans-serif';
+  octx.textBaseline = 'middle';
+  octx.direction = 'rtl';
+
+  for (const b of lastDet.boxes) {
+    const x = ox + b.x1 * sx, y = oy + b.y1 * sy;
+    const w = (b.x2 - b.x1) * sx, h = (b.y2 - b.y1) * sy;
+    const c = colorFor(b.label);
+
+    octx.strokeStyle = c;
+    octx.lineWidth = 2;
+    octx.strokeRect(x, y, w, h);
+
+    const text = `${b.label_ar} ${Math.round(b.score * 100)}%`;
+    const tw = octx.measureText(text).width + 12;
+    const ty = y > 22 ? y - 11 : y + h + 11;
+
+    octx.fillStyle = c;
+    octx.fillRect(x + w - tw, ty - 11, tw, 22);
+    octx.fillStyle = '#0f172a';
+    octx.textAlign = 'right';
+    octx.fillText(text, x + w - 6, ty);
+  }
+}
+window.addEventListener('resize', drawBoxes);
+
+/* Counts distinct track ids, not boxes in the current frame: an object that the
+   detector misses for a frame or two keeps its place instead of blinking out. */
+function drawCounters() {
+  const now = performance.now();
+  const counts = {};
+  for (const [id, t] of tracks) {
+    if (now - t.seen > COUNT_HOLD_MS) { tracks.delete(id); continue; }
+    counts[t.label_ar] = (counts[t.label_ar] || 0) + 1;
+  }
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const box = el('counters');
+  box.textContent = '';
+
+  if (!entries.length) {
+    const empty = document.createElement('span');
+    empty.className = 'text-slate-500';
+    empty.textContent = 'لا توجد عناصر بعد…';
+    box.append(empty);
+    return;
+  }
+  for (const [name, n] of entries) {
+    const chip = document.createElement('span');
+    chip.className = 'bg-slate-800 rounded-lg px-3 py-1.5 flex items-center gap-2';
+    const num = document.createElement('b');
+    num.className = 'text-emerald-400 text-base';
+    num.textContent = n;
+    const label = document.createElement('span');
+    label.textContent = name;
+    chip.append(num, label);
+    box.append(chip);
+  }
+}
+/* Frames can stop arriving (tab hidden, camera busy); expire counts anyway. */
+setInterval(drawCounters, 500);
+
+/* ---------------- scene events ---------------- */
+function onEvents(m) {
+  const feed = el('events');
+  if (feed.dataset.seeded !== '1') { feed.textContent = ''; feed.dataset.seeded = '1'; }
+
+  for (const e of m.events) {
+    if (e.kind === 'disappeared' && e.track_id != null) tracks.delete(e.track_id);
+    // count_changed is already visible in the counters; the feed stays a list of arrivals
+    // and departures so it reads as a story rather than a diff log.
+    if (e.kind !== 'appeared' && e.kind !== 'disappeared') continue;
+
+    const t = new Date(e.timestamp * 1000).toLocaleTimeString('ar-EG', {
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+    const row = document.createElement('div');
+    row.className = 'flex items-baseline gap-2 border-r-2 pr-2 ' +
+      (e.kind === 'appeared' ? 'border-emerald-500' : 'border-slate-600');
+
+    const text = document.createElement('span');
+    text.className = e.kind === 'appeared' ? 'text-slate-200' : 'text-slate-400';
+    text.textContent = e.text_ar;
+    const when = document.createElement('span');
+    when.className = 'text-xs text-slate-500 mr-auto';
+    when.textContent = t;
+
+    row.append(text, when);
+    feed.prepend(row);
+  }
+  while (feed.children.length > MAX_EVENT_ROWS) feed.lastElementChild.remove();
+  drawCounters();
+}
+
+/* ---------------- captions ---------------- */
+function onCaption(m) {
+  el('lat').textContent = m.latency_ms;
+  const log = el('log');
+  if (log.dataset.seeded !== '1') { log.innerHTML = ''; log.dataset.seeded = '1'; }
+
+  const t = new Date().toLocaleTimeString('ar-EG', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  });
+  const div = document.createElement('div');
+  div.className = 'bg-slate-800/60 rounded-lg p-3 border-r-2 ' +
+    (m.error ? 'border-rose-500' : 'border-sky-500');
+
+  const when = document.createElement('div');
+  when.className = 'text-xs text-slate-500 mb-1';
+  when.textContent = t;
+  const body = document.createElement('div');
+  body.className = 'caption-text text-sm leading-relaxed';
+  body.textContent = m.text;   // textContent: model output never becomes HTML
+
+  div.append(when, body);
+  log.prepend(div);
+  while (log.children.length > 10) log.lastElementChild.remove();
+}
+
+/* ---------------- boot ---------------- */
+(async () => {
+  banner('جارٍ تحميل النماذج…', 'قد يستغرق هذا دقيقة عند أول تشغيل.');
+  await startCamera();
+  connect();
+})();
+</script>
+</body>
+</html>
