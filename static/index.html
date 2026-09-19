@@ -3,81 +3,460 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>لوحة الرؤية الحاسوبية</title>
-<script src="https://cdn.tailwindcss.com"></script>
+<title>مشهد — رؤية حية</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-  html, body { height: 100%; }
-  body { font-family: 'Cairo', system-ui, sans-serif; }
+  /* Tokens follow ibra.ws: white paper, blueprint grid, ink, one cobalt accent. */
+  :root {
+    color-scheme: light;
+    --paper: #ffffff;
+    --surface: #f3f6fa;
+    --surface-raised: #e4ebf4;
+    --ink: #202632;
+    --ink-soft: #4e5b6d;
+    --muted: #6a7686;
+    --line: #d5dce5;
+    --line-strong: #b9c4d2;
+    --accent: #2455d6;
+    --accent-dim: #dce8ff;
+    --bad: #c8391f;
+    --warn: #a86400;
+    --night: #101a2a;
+    --grid: #2455d610;
+
+    /* Space Grotesk carries Latin and digits; Arabic falls through to Plex Arabic. */
+    --display: "Space Grotesk", "IBM Plex Sans Arabic", system-ui, sans-serif;
+    --body: "IBM Plex Sans Arabic", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", "IBM Plex Sans Arabic", ui-monospace, monospace;
+    --ease: cubic-bezier(.22, .7, .2, 1);
+  }
+
+  * { box-sizing: border-box; }
   /* Arabic must shape + order correctly everywhere, including canvas labels. */
   * { unicode-bidi: plaintext; }
-  #log::-webkit-scrollbar, #events::-webkit-scrollbar { width: 6px; }
-  #log::-webkit-scrollbar-thumb,
-  #events::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
-  /* captions are two sentences now — let long Arabic runs wrap instead of overflowing */
-  #log .caption-text { overflow-wrap: anywhere; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background-color: var(--paper);
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 72px 72px;
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--accent-dim); color: var(--ink); }
+  h2, p, figure { margin: 0; }
+
+  /* small labels; Arabic ones stay in the body face (a mono fallback gives them
+     wide monospace spaces), Latin ones switch to mono. Letter-spacing only on Latin:
+     it breaks Arabic joining. */
+  .eyebrow { font: 400 12px/1.6 var(--body); color: var(--muted); }
+  .caps { font: 400 10px/1.6 var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+
+  .app {
+    height: 100%;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    width: min(1600px, 100% - 48px);
+    margin-inline: auto;
+  }
+
+  /* ---------- header ---------- */
+  .top {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    min-height: 72px;
+    border-bottom: 1px solid var(--line);
+  }
+  .wordmark {
+    font: 600 34px/1 var(--body);
+    letter-spacing: 0;
+    display: inline-flex;
+    align-items: baseline;
+    gap: .12em;
+    cursor: default;
+  }
+  .dot {
+    position: relative;
+    width: .17em; height: .17em;
+    background: var(--accent);
+  }
+  /* the viewfinder "lock" from the portfolio wordmark */
+  .dot::before, .dot::after {
+    content: ""; position: absolute;
+    width: .14em; height: .14em;
+    border: 0 solid var(--accent);
+    opacity: 0;
+    animation: lock 1.8s var(--ease) .5s backwards;
+    transition: opacity .18s, transform .24s var(--ease);
+  }
+  .dot::before { border-width: .035em 0 0 .035em; top: -.1em; left: -.1em; transform: translate(-.05em, -.05em); }
+  .dot::after  { border-width: 0 .035em .035em 0; bottom: -.1em; right: -.1em; transform: translate(.05em, .05em); }
+  .wordmark:hover .dot::before, .wordmark:hover .dot::after { opacity: 1; transform: none; }
+  @keyframes lock { 0% { opacity: 0 } 25%, 70% { opacity: 1; transform: none } 100% { opacity: 0 } }
+
+  .top-sub { padding-inline-start: 24px; border-inline-start: 1px solid var(--line); }
+  .top-meta { margin-inline-start: auto; display: flex; align-items: center; gap: 28px; }
+  .top-meta b { font-weight: 500; color: var(--ink); }
+
+  .conn {
+    display: inline-flex; align-items: center; gap: 10px;
+    min-height: 34px; padding: 0 14px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-size: 13px;
+    color: var(--ink-soft);
+    transition: border-color .2s, color .2s;
+  }
+  .conn i { width: 7px; height: 7px; background: var(--warn); }
+  .conn[data-state="on"] { border-color: var(--line-strong); color: var(--ink); }
+  .conn[data-state="on"] i { background: var(--accent); animation: blink 2.4s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: .25 } }
+
+  /* ---------- stage ---------- */
+  .stage {
+    min-height: 0;
+    display: grid;
+    /* RTL: first column sits on the right */
+    grid-template-columns: minmax(320px, 31%) 1fr;
+    gap: 32px;
+    padding-block: 24px;
+  }
+
+  .panel { min-height: 0; display: flex; flex-direction: column; gap: 22px; }
+  .block { display: flex; flex-direction: column; min-height: 0; }
+  .block-head {
+    display: flex; align-items: baseline; gap: 12px;
+    padding-bottom: 10px; margin-bottom: 12px;
+    border-bottom: 1px solid var(--ink);
+  }
+  .idx { font: 500 11px var(--mono); color: var(--accent); letter-spacing: .06em; }
+  .block-head h2 { font: 600 17px/1.2 var(--body); }
+  .block-head .eyebrow { margin-inline-start: auto; }
+  .empty { color: var(--muted); font-size: 13px; }
+
+  /* 01 inventory: a ledger, not chips */
+  #counters { display: flex; flex-direction: column; }
+  .row {
+    display: grid;
+    grid-template-columns: 44px 1fr auto;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .row:last-child { border-bottom: 0; }
+  .row .n { font: 500 26px/1 var(--display); letter-spacing: -.04em; }
+  .row .name { font-size: 15px; }
+  .tally { display: flex; gap: 3px; direction: ltr; }
+  .tally i { width: 7px; height: 7px; background: var(--accent); }
+  .tally span { font: 10px var(--mono); color: var(--muted); margin-left: 4px; }
+
+  /* 02 events: timeline on a single rule */
+  #events { overflow-y: auto; max-height: 12rem; padding-inline-end: 4px; }
+  .ev {
+    display: grid;
+    grid-template-columns: 18px 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 0;
+    font-size: 14px;
+    animation: rise .35s var(--ease) both;
+  }
+  .ev .g {
+    width: 18px; height: 18px;
+    display: grid; place-items: center;
+    font: 500 12px/1 var(--mono);
+    border: 1px solid var(--accent); color: var(--accent);
+  }
+  .ev.out .g { border-color: var(--line-strong); color: var(--muted); }
+  .ev.out .t { color: var(--muted); }
+  .ev .when { font: 11px var(--mono); color: var(--muted); }
+
+  /* 03 captions: newest is the lead paragraph, the rest recede */
+  .block.grow { flex: 1; }
+  #log { flex: 1; min-height: 0; overflow-y: auto; padding-inline-end: 4px; }
+  .cap { padding: 12px 0 14px; border-bottom: 1px solid var(--line); }
+  .cap-meta { display: flex; gap: 14px; margin-bottom: 4px; font: 11px var(--mono); }
+  .cap-meta .k { color: var(--accent); }
+  .cap-text { font-size: 14px; line-height: 1.75; color: var(--ink-soft); overflow-wrap: anywhere; }
+  .cap:first-child .cap-text {
+    font-size: 19px; line-height: 1.7; color: var(--ink);
+    animation: reveal .7s var(--ease) both;
+  }
+  .cap.err .cap-meta .k, .cap.err .cap-text { color: var(--bad); }
+  @keyframes reveal { from { clip-path: inset(0 0 0 100%); opacity: .4 } to { clip-path: inset(0 0 0 0); opacity: 1 } }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px) } }
+
+  #log::-webkit-scrollbar, #events::-webkit-scrollbar { width: 4px; }
+  #log::-webkit-scrollbar-thumb, #events::-webkit-scrollbar-thumb { background: var(--line-strong); }
+
+  /* ---------- FIG. 01 ---------- */
+  .fig { min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+  .fig-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 10px; }
+  .fig-head .title { font: 500 15px var(--body); }
+  .fig-head .dims { margin-inline-start: auto; }
+
+  .frame {
+    --r: 20px;
+    position: relative;
+    flex: 1; min-height: 0;
+    padding-top: var(--r);
+    padding-inline-start: var(--r);
+  }
+  /* rulers: minor tick every 8px, major every 64px, counted from the reading edge */
+  .ruler-x, .ruler-y { position: absolute; pointer-events: none; }
+  .ruler-x {
+    top: 0; height: var(--r);
+    inset-inline-start: var(--r); inset-inline-end: 0;
+    background:
+      repeating-linear-gradient(to left, var(--muted) 0 1px, transparent 1px 64px) bottom / 100% 12px no-repeat,
+      repeating-linear-gradient(to left, var(--line-strong) 0 1px, transparent 1px 8px) bottom / 100% 5px no-repeat;
+  }
+  .ruler-y {
+    top: var(--r); bottom: 0;
+    inset-inline-start: 0; width: var(--r);
+    background:
+      repeating-linear-gradient(to bottom, var(--muted) 0 1px, transparent 1px 64px) left / 12px 100% no-repeat,
+      repeating-linear-gradient(to bottom, var(--line-strong) 0 1px, transparent 1px 8px) left / 5px 100% no-repeat;
+  }
+  .origin {
+    position: absolute; top: 0; inset-inline-start: 0;
+    width: var(--r); height: var(--r);
+    display: grid; place-items: center;
+    font: 8px var(--mono); color: var(--muted);
+  }
+
+  .viewport {
+    position: relative;
+    height: 100%;
+    background-color: var(--surface);
+    background-image:
+      linear-gradient(#2455d614 1px, transparent 1px),
+      linear-gradient(90deg, #2455d614 1px, transparent 1px);
+    background-size: 48px 48px;
+    outline: 1px solid var(--line);
+    overflow: hidden;
+  }
+  #video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  /* selfie view; only the display flips, frames go to the server unmirrored */
+  #video.mirror { transform: scaleX(-1); }
+  #overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+  /* crop marks just outside the viewfinder */
+  .mark { position: absolute; width: 14px; height: 14px; border: 0 solid var(--accent); pointer-events: none; z-index: 3; }
+  .mark.tl { top: calc(var(--r) - 6px); left: -6px; border-width: 1.5px 0 0 1.5px; }
+  .mark.tr { top: calc(var(--r) - 6px); right: -6px; border-width: 1.5px 1.5px 0 0; }
+  .mark.bl { bottom: -6px; left: -6px; border-width: 0 0 1.5px 1.5px; }
+  .mark.br { bottom: -6px; right: -6px; border-width: 0 1.5px 1.5px 0; }
+  /* ruler sits on the right in RTL, so the right-hand marks clear it */
+  [dir="rtl"] .mark.tr, [dir="rtl"] .mark.br { right: calc(var(--r) - 6px); }
+  [dir="ltr"] .mark.tl, [dir="ltr"] .mark.bl { left: calc(var(--r) - 6px); }
+
+  .corner {
+    position: absolute; bottom: 14px; left: 16px; z-index: 2;
+    font: 9px var(--mono); letter-spacing: .1em; text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .fig figcaption {
+    display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 20px;
+    margin-top: 12px;
+    padding-inline-start: 20px;
+  }
+  .fig figcaption strong { font-weight: 400; font-size: 13px; }
+
+  /* ---------- calibration screen ---------- */
+  #banner {
+    position: absolute; inset: 0; z-index: 4;
+    display: grid; place-items: center;
+    padding: 32px;
+    background: #f3f6faf0;
+    color: var(--ink);
+    text-align: center;
+  }
+  #banner.is-hidden { display: none; }
+  #banner::before {  /* scan line */
+    content: ""; position: absolute; inset-inline: 0; top: 0; height: 90px;
+    background: linear-gradient(to bottom, transparent, #2455d614 85%, #2455d633 100%);
+    border-bottom: 1px solid var(--accent);
+    animation: scan 3.2s var(--ease) infinite;
+    pointer-events: none;
+  }
+  #banner[data-tone="error"]::before { display: none; }
+  @keyframes scan { from { transform: translateY(-100%) } to { transform: translateY(calc(100cqh + 100%)) } }
+  #banner { container-type: size; }
+  .banner-inner { position: relative; max-width: 460px; }
+  .banner-inner .eyebrow { color: var(--accent); }
+  #bannerTitle { font: 600 26px/1.3 var(--body); margin: 10px 0 8px; }
+  #banner[data-tone="error"] #bannerTitle { color: var(--bad); }
+  #banner[data-tone="error"] .banner-inner .eyebrow { color: var(--bad); }
+  #bannerBody { color: var(--muted); font-size: 14px; }
+  .blocks { display: flex; justify-content: center; gap: 4px; margin-top: 22px; direction: ltr; }
+  .blocks i {
+    width: 8px; height: 8px; background: var(--accent);
+    opacity: .15;
+    animation: pulse 1.6s steps(1) infinite;
+    animation-delay: calc(var(--i) * .1s);
+  }
+  #banner[data-tone="error"] .blocks { display: none; }
+  @keyframes pulse { 0%, 30% { opacity: 1 } }
+
+  /* ---------- spec strip ---------- */
+  .specs {
+    display: grid;
+    grid-template-columns: repeat(4, auto) 1fr;
+    border-top: 1px solid var(--ink);
+  }
+  .spec {
+    /* explicit: plaintext bidi would left-align the Latin-only value lines */
+    text-align: right;
+    padding: 10px 22px 12px;
+    border-inline-end: 1px solid var(--line);
+    min-width: 0;
+  }
+  .spec:first-child { padding-inline-start: 0; }
+  .spec:last-child { border-inline-end: 0; }
+  .spec .v { display: block; font: 500 20px/1.3 var(--display); letter-spacing: -.03em; white-space: nowrap; }
+  .spec .v small { font: 11px var(--mono); color: var(--muted); letter-spacing: 0; margin-inline-start: 4px; }
+  .spec .v.model { font: 400 13px/1.9 var(--mono); letter-spacing: 0; overflow: hidden; text-overflow: ellipsis; }
+  .spec.note { align-self: center; text-align: end; }
+
+  /* ---------- small screens ---------- */
+  @media (max-width: 900px) {
+    html, body { height: auto; }
+    .app { height: auto; width: calc(100% - 32px); }
+    .top { flex-wrap: wrap; gap: 12px 18px; padding-block: 14px; }
+    .top-sub { display: none; }
+    .stage { grid-template-columns: 1fr; gap: 28px; }
+    .fig { order: -1; }
+    .frame { flex: none; aspect-ratio: 4 / 3; }
+    #log { max-height: 26rem; }
+    .specs { grid-template-columns: 1fr 1fr; }
+    .spec { padding-inline: 0 16px; border-inline-end: 0; border-bottom: 1px solid var(--line); }
+    .spec.note { grid-column: 1 / -1; text-align: start; border-bottom: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
 </style>
 </head>
-<body class="bg-slate-950 text-slate-100 h-full">
+<body>
 
-<div class="flex flex-col h-full">
+<div class="app">
 
-  <!-- main area: RTL means the first child renders on the RIGHT -->
-  <div class="flex flex-1 min-h-0 gap-3 p-3">
+  <header class="top">
+    <span class="wordmark">مشهد<span class="dot" aria-hidden="true"></span></span>
+    <span class="top-sub eyebrow">رؤية حاسوبية تعمل على هذا الجهاز</span>
+    <div class="top-meta">
+      <span class="eyebrow caps">Session <b id="clock">00:00:00</b></span>
+      <span id="conn" class="conn" data-state="off"><i></i><span id="connText">غير متصل</span></span>
+    </div>
+  </header>
 
-    <!-- ===== right column (~35%) ===== -->
-    <aside class="w-[35%] flex flex-col gap-3 min-h-0">
+  <div class="stage">
 
-      <!-- counters -->
-      <section class="bg-slate-900 rounded-xl p-4 border border-slate-800 shrink-0">
-        <h2 class="text-lg font-bold mb-3 text-emerald-400">العناصر المكتشفة</h2>
-        <div id="counters" class="flex flex-wrap gap-2 text-sm">
-          <span class="text-slate-500">لا توجد عناصر بعد…</span>
+    <!-- RTL: the panel renders on the right -->
+    <aside class="panel">
+
+      <section class="block">
+        <div class="block-head">
+          <span class="idx">01</span>
+          <h2>العناصر في الإطار</h2>
+          <span class="eyebrow">عدد فريد لكل تتبّع</span>
         </div>
+        <div id="counters"><p class="empty">لا توجد عناصر بعد…</p></div>
       </section>
 
-      <!-- event feed: what appeared and what left -->
-      <section class="bg-slate-900 rounded-xl p-4 border border-slate-800 shrink-0 flex flex-col">
-        <h2 class="text-lg font-bold mb-2 text-amber-400">أحداث المشهد</h2>
-        <div id="events" class="overflow-y-auto space-y-1 pl-1 text-sm" style="max-height: 9rem">
-          <p class="text-slate-500">لا توجد أحداث بعد…</p>
+      <section class="block">
+        <div class="block-head">
+          <span class="idx">02</span>
+          <h2>أحداث المشهد</h2>
+          <span class="eyebrow">دخول وخروج</span>
         </div>
+        <div id="events"><p class="empty">لا توجد أحداث بعد…</p></div>
       </section>
 
-      <!-- caption log -->
-      <section class="bg-slate-900 rounded-xl p-4 border border-slate-800 flex-1 min-h-0 flex flex-col">
-        <h2 class="text-lg font-bold mb-3 text-sky-400">وصف المشهد</h2>
-        <div id="log" class="flex-1 overflow-y-auto space-y-2 pl-1">
-          <p class="text-slate-500 text-sm">في انتظار أول وصف…</p>
+      <section class="block grow">
+        <div class="block-head">
+          <span class="idx">03</span>
+          <h2>وصف المشهد</h2>
+          <span class="eyebrow">مخرجات النموذج اللغوي</span>
         </div>
+        <div id="log"><p class="empty">في انتظار أول وصف…</p></div>
       </section>
 
     </aside>
 
-    <!-- ===== left column (~65%): video + overlay ===== -->
-    <main class="w-[65%] bg-slate-900 rounded-xl border border-slate-800 relative overflow-hidden flex items-center justify-center">
-      <video id="video" autoplay playsinline muted class="max-w-full max-h-full"></video>
-      <canvas id="overlay" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+    <figure class="fig">
+      <div class="fig-head">
+        <span class="idx">FIG. 01</span>
+        <span class="title">البث الحي</span>
+        <span id="dims" class="dims eyebrow caps">— × — px</span>
+      </div>
 
-      <div id="banner" class="absolute inset-0 bg-slate-950/90 flex items-center justify-center p-8 text-center">
-        <div>
-          <p id="bannerTitle" class="text-2xl font-bold mb-2">جارٍ تحميل النماذج…</p>
-          <p id="bannerBody" class="text-slate-400">قد يستغرق هذا دقيقة عند أول تشغيل.</p>
+      <div class="frame">
+        <span class="origin" aria-hidden="true">0</span>
+        <span class="ruler-x" aria-hidden="true"></span>
+        <span class="ruler-y" aria-hidden="true"></span>
+        <span class="mark tl"></span><span class="mark tr"></span>
+        <span class="mark bl"></span><span class="mark br"></span>
+
+        <div class="viewport" id="viewport">
+          <video id="video" autoplay playsinline muted></video>
+          <canvas id="overlay"></canvas>
+          <span class="corner" id="corner">live / —</span>
+
+          <div id="banner" data-tone="info">
+            <div class="banner-inner">
+              <p class="eyebrow caps">Calibrating</p>
+              <p id="bannerTitle">جارٍ تحميل النماذج…</p>
+              <p id="bannerBody">قد يستغرق هذا دقيقة عند أول تشغيل.</p>
+              <div class="blocks" aria-hidden="true">
+                <i style="--i:0"></i><i style="--i:1"></i><i style="--i:2"></i><i style="--i:3"></i>
+                <i style="--i:4"></i><i style="--i:5"></i><i style="--i:6"></i><i style="--i:7"></i>
+                <i style="--i:8"></i><i style="--i:9"></i><i style="--i:10"></i><i style="--i:11"></i>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-    </main>
+
+      <figcaption>
+        <strong>الإطارات لا تغادر هذا الجهاز؛ الكشف والوصف يعملان محليًا.</strong>
+        <span class="eyebrow">المربعات من نموذج الكشف · الوصف من النموذج اللغوي البصري</span>
+      </figcaption>
+    </figure>
 
   </div>
 
-  <!-- ===== footer ===== -->
-  <footer class="shrink-0 bg-slate-900 border-t border-slate-800 px-4 py-2 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-400">
-    <span>معدل الكشف: <b id="fps" class="text-emerald-400">—</b> إطار/ث</span>
-    <span>زمن آخر وصف: <b id="lat" class="text-sky-400">—</b> مللي ثانية</span>
-    <span>نموذج الكشف: <b id="mDet" class="text-slate-200">RF-DETR Nano</b></span>
-    <span>النموذج اللغوي: <b id="mVlm" class="text-slate-200">Qwen2.5-VL-3B-4bit</b></span>
-    <span id="conn" class="text-amber-400">غير متصل</span>
+  <footer class="specs">
+    <div class="spec">
+      <span class="eyebrow">معدل الكشف</span>
+      <span class="v"><b id="fps" style="font-weight:inherit">—</b><small>fps</small></span>
+    </div>
+    <div class="spec">
+      <span class="eyebrow">زمن آخر وصف</span>
+      <span class="v"><b id="lat" style="font-weight:inherit">—</b><small>ms</small></span>
+    </div>
+    <div class="spec">
+      <span class="eyebrow">نموذج الكشف</span>
+      <span class="v model" id="mDet">RF-DETR Nano</span>
+    </div>
+    <div class="spec">
+      <span class="eyebrow">النموذج اللغوي</span>
+      <span class="v model" id="mVlm">Qwen2.5-VL-3B-4bit</span>
+    </div>
+    <div class="spec note">
+      <span class="eyebrow caps">127.0.0.1 · local only</span>
+    </div>
   </footer>
 
 </div>
@@ -89,27 +468,49 @@ const SEND_WIDTH = 640;
    ~15-frame miss tolerance, and is what stops the counters flickering. */
 const COUNT_HOLD_MS = 1500;
 const MAX_EVENT_ROWS = 20;
+/* How long a new track's brackets take to close in on it. */
+const LOCK_MS = 450;
+/* Show the camera like a mirror. Boxes are flipped to match when drawn. */
+const MIRROR = true;
 
-const video   = document.getElementById('video');
-const overlay = document.getElementById('overlay');
-const octx    = overlay.getContext('2d');
-const grab    = document.createElement('canvas');
-const gctx    = grab.getContext('2d');
+const video    = document.getElementById('video');
+const overlay  = document.getElementById('overlay');
+const viewport = document.getElementById('viewport');
+const octx     = overlay.getContext('2d');
+const grab     = document.createElement('canvas');
+const gctx     = grab.getContext('2d');
+
+video.classList.toggle('mirror', MIRROR);
 
 const el = id => document.getElementById(id);
 let ws = null, streamOk = false, lastDet = null, sending = false, cameraError = false;
+let captionCount = 0;
+
+const clockTime = d => d.toLocaleTimeString('en-GB', { hour12: false });
 
 /* ---------------- banner ---------------- */
-function banner(title, body, tone='slate') {
+function banner(title, body, tone='info') {
   // a camera failure is unrecoverable without user action — never paper over it
   if (cameraError && tone !== 'error') return;
   el('bannerTitle').textContent = title;
   el('bannerBody').textContent  = body || '';
-  el('bannerTitle').className = 'text-2xl font-bold mb-2 ' +
-    (tone === 'error' ? 'text-rose-400' : 'text-slate-100');
-  el('banner').classList.remove('hidden');
+  el('banner').dataset.tone = tone;
+  el('banner').querySelector('.eyebrow').textContent = tone === 'error' ? 'Fault' : 'Calibrating';
+  el('banner').classList.remove('is-hidden');
 }
-function hideBanner() { if (!cameraError) el('banner').classList.add('hidden'); }
+function hideBanner() { if (!cameraError) el('banner').classList.add('is-hidden'); }
+
+/* ---------------- header ---------------- */
+function setConn(on) {
+  el('conn').dataset.state = on ? 'on' : 'off';
+  el('connText').textContent = on ? 'متصل' : 'غير متصل';
+}
+const sessionStart = Date.now();
+setInterval(() => {
+  const s = Math.floor((Date.now() - sessionStart) / 1000);
+  el('clock').textContent = [s / 3600, (s % 3600) / 60, s % 60]
+    .map(v => String(Math.floor(v)).padStart(2, '0')).join(':');
+}, 1000);
 
 /* ---------------- camera ---------------- */
 async function startCamera() {
@@ -140,7 +541,7 @@ function connect() {
   ws.binaryType = 'arraybuffer';
 
   ws.onopen = () => {
-    el('conn').textContent = 'متصل'; el('conn').className = 'text-emerald-400';
+    setConn(true);
     tracks.clear();          // a fresh connection means a fresh SceneState, ids restart at 1
     drawCounters();
   };
@@ -154,8 +555,7 @@ function connect() {
   };
 
   ws.onclose = () => {
-    el('conn').textContent = 'غير متصل';
-    el('conn').className = 'text-amber-400';
+    setConn(false);
     setTimeout(connect, 1500);   // retry until the models finish loading
   };
   ws.onerror = () => ws.close();
@@ -190,62 +590,119 @@ function sendFrame() {
 }
 
 /* ---------------- detections ---------------- */
-/* track_id -> { label_ar, seen } — the client's copy of the server's world model */
+/* track_id -> { label_ar, seen, born } — the client's copy of the server's world model */
 const tracks = new Map();
 
 function onDetection(m) {
+  if (!lastDet || lastDet.w !== m.w || lastDet.h !== m.h) {
+    el('dims').textContent = `${m.w} × ${m.h} px`;
+  }
   lastDet = m;
   el('fps').textContent = m.fps.toFixed(1);
-  drawBoxes();
+  el('corner').textContent = `live / ${m.boxes.length} obj`;
 
   const now = performance.now();
   for (const b of m.boxes) {
-    if (b.track_id != null) tracks.set(b.track_id, { label_ar: b.label_ar, seen: now });
+    if (b.track_id == null) continue;
+    const prev = tracks.get(b.track_id);
+    tracks.set(b.track_id, { label_ar: b.label_ar, seen: now, born: prev ? prev.born : now });
   }
   drawCounters();
 }
 
-const PALETTE = ['#34d399','#38bdf8','#fbbf24','#f472b6','#a78bfa','#fb7185','#4ade80','#22d3ee'];
+/* Bright enough to read on top of camera footage, kept in the portfolio's cool range
+   with two warm signals so neighbouring classes stay distinguishable. */
+const PALETTE = ['#6f9bff','#38c8f2','#ffb547','#5fd4a0','#ff7a9c','#c7a6ff','#f2e35c','#ff8a4c'];
 const colorFor = s => PALETTE[[...s].reduce((a,c)=>a+c.charCodeAt(0),0) % PALETTE.length];
 
+function brackets(L, T, R, B, len) {
+  octx.beginPath();
+  octx.moveTo(L, T + len); octx.lineTo(L, T); octx.lineTo(L + len, T);
+  octx.moveTo(R - len, T); octx.lineTo(R, T); octx.lineTo(R, T + len);
+  octx.moveTo(R, B - len); octx.lineTo(R, B); octx.lineTo(R - len, B);
+  octx.moveTo(L + len, B); octx.lineTo(L, B); octx.lineTo(L, B - len);
+  octx.stroke();
+}
+
 function drawBoxes() {
-  const r = video.getBoundingClientRect();
-  const p = overlay.parentElement.getBoundingClientRect();
-  if (overlay.width !== p.width || overlay.height !== p.height) {
-    overlay.width = p.width; overlay.height = p.height;
+  const dpr = window.devicePixelRatio || 1;
+  const W = viewport.clientWidth, H = viewport.clientHeight;
+  if (overlay.width !== Math.round(W * dpr) || overlay.height !== Math.round(H * dpr)) {
+    overlay.width = Math.round(W * dpr); overlay.height = Math.round(H * dpr);
   }
-  octx.clearRect(0, 0, overlay.width, overlay.height);
-  if (!lastDet || !lastDet.boxes.length) return;
+  octx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  octx.clearRect(0, 0, W, H);
+  if (!lastDet || !lastDet.boxes.length || !video.videoWidth) return;
 
-  // map backend frame coords -> the on-screen video rectangle
-  const sx = r.width / lastDet.w, sy = r.height / lastDet.h;
-  const ox = r.left - p.left,     oy = r.top - p.top;
-
-  octx.font = '600 15px Cairo, sans-serif';
-  octx.textBaseline = 'middle';
-  octx.direction = 'rtl';
+  // the video is object-fit: contain — map backend frame coords onto its drawn rectangle
+  const s  = Math.min(W / video.videoWidth, H / video.videoHeight);
+  const dw = video.videoWidth * s, dh = video.videoHeight * s;
+  const ox = (W - dw) / 2, oy = (H - dh) / 2;
+  const sx = dw / lastDet.w, sy = dh / lastDet.h;
+  const now = performance.now();
 
   for (const b of lastDet.boxes) {
-    const x = ox + b.x1 * sx, y = oy + b.y1 * sy;
+    const x = ox + (MIRROR ? lastDet.w - b.x2 : b.x1) * sx, y = oy + b.y1 * sy;
     const w = (b.x2 - b.x1) * sx, h = (b.y2 - b.y1) * sy;
     const c = colorFor(b.label);
 
+    // new tracks "lock on": brackets start wide and close in
+    const t = b.track_id != null && tracks.has(b.track_id)
+      ? Math.min((now - tracks.get(b.track_id).born) / LOCK_MS, 1) : 1;
+    const e = 1 - Math.pow(1 - t, 3);
+    const pad = (1 - e) * 18;
+
+    octx.globalAlpha = 0.35 * e;
     octx.strokeStyle = c;
-    octx.lineWidth = 2;
-    octx.strokeRect(x, y, w, h);
+    octx.lineWidth = 1;
+    octx.strokeRect(x + .5, y + .5, w, h);
 
-    const text = `${b.label_ar} ${Math.round(b.score * 100)}%`;
-    const tw = octx.measureText(text).width + 12;
-    const ty = y > 22 ? y - 11 : y + h + 11;
+    octx.globalAlpha = 0.4 + 0.6 * e;
+    octx.lineWidth = 2.5;
+    brackets(x - pad, y - pad, x + w + pad, y + h + pad, Math.max(6, Math.min(20, w / 4, h / 4)));
 
+    // centre reticle
+    octx.globalAlpha = 0.55 * e;
+    octx.lineWidth = 1;
+    const cx = x + w / 2, cy = y + h / 2;
+    octx.beginPath();
+    octx.moveTo(cx - 5, cy); octx.lineTo(cx + 5, cy);
+    octx.moveTo(cx, cy - 5); octx.lineTo(cx, cy + 5);
+    octx.stroke();
+    octx.globalAlpha = 1;
+
+    // label: [#id][ name  92% ] anchored to the box's right edge (reading start)
+    octx.textBaseline = 'middle';
+    octx.font = '500 13px "IBM Plex Sans Arabic", sans-serif';
+    octx.direction = 'rtl';
+    const text = `${b.label_ar}  ${Math.round(b.score * 100)}%`;
+    const tw = octx.measureText(text).width + 14;
+    octx.font = '500 10px "IBM Plex Mono", monospace';
+    octx.direction = 'ltr';
+    const tag = b.track_id != null ? `#${b.track_id}` : '';
+    const iw = tag ? octx.measureText(tag).width + 10 : 0;
+
+    const ty = y > 26 ? y - 13 : y + h + 13;
+    const right = Math.min(Math.max(x + w, tw + iw), W);
+
+    if (tag) {
+      octx.fillStyle = 'rgba(7, 12, 20, .78)';
+      octx.fillRect(right - tw - iw, ty - 10, iw, 20);
+      octx.fillStyle = c;
+      octx.textAlign = 'center';
+      octx.fillText(tag, right - tw - iw / 2, ty + 1);
+    }
     octx.fillStyle = c;
-    octx.fillRect(x + w - tw, ty - 11, tw, 22);
-    octx.fillStyle = '#0f172a';
+    octx.fillRect(right - tw, ty - 10, tw, 20);
+    octx.fillStyle = '#0b1220';
+    octx.font = '500 13px "IBM Plex Sans Arabic", sans-serif';
+    octx.direction = 'rtl';
     octx.textAlign = 'right';
-    octx.fillText(text, x + w - 6, ty);
+    octx.fillText(text, right - 7, ty + 1);
   }
 }
-window.addEventListener('resize', drawBoxes);
+/* Redraw every frame so lock-on animations run smoothly between detections. */
+(function paint() { drawBoxes(); requestAnimationFrame(paint); })();
 
 /* Counts distinct track ids, not boxes in the current frame: an object that the
    detector misses for a frame or two keeps its place instead of blinking out. */
@@ -261,22 +718,31 @@ function drawCounters() {
   box.textContent = '';
 
   if (!entries.length) {
-    const empty = document.createElement('span');
-    empty.className = 'text-slate-500';
+    const empty = document.createElement('p');
+    empty.className = 'empty';
     empty.textContent = 'لا توجد عناصر بعد…';
     box.append(empty);
     return;
   }
   for (const [name, n] of entries) {
-    const chip = document.createElement('span');
-    chip.className = 'bg-slate-800 rounded-lg px-3 py-1.5 flex items-center gap-2';
-    const num = document.createElement('b');
-    num.className = 'text-emerald-400 text-base';
-    num.textContent = n;
+    const row = document.createElement('div');
+    row.className = 'row';
+    const num = document.createElement('span');
+    num.className = 'n';
+    num.textContent = String(n).padStart(2, '0');
     const label = document.createElement('span');
+    label.className = 'name';
     label.textContent = name;
-    chip.append(num, label);
-    box.append(chip);
+    const tally = document.createElement('span');
+    tally.className = 'tally';
+    for (let i = 0; i < Math.min(n, 10); i++) tally.append(document.createElement('i'));
+    if (n > 10) {
+      const more = document.createElement('span');
+      more.textContent = `+${n - 10}`;
+      tally.append(more);
+    }
+    row.append(num, label, tally);
+    box.append(row);
   }
 }
 /* Frames can stop arriving (tab hidden, camera busy); expire counts anyway. */
@@ -293,21 +759,20 @@ function onEvents(m) {
     // and departures so it reads as a story rather than a diff log.
     if (e.kind !== 'appeared' && e.kind !== 'disappeared') continue;
 
-    const t = new Date(e.timestamp * 1000).toLocaleTimeString('ar-EG', {
-      hour: '2-digit', minute: '2-digit', second: '2-digit'
-    });
     const row = document.createElement('div');
-    row.className = 'flex items-baseline gap-2 border-r-2 pr-2 ' +
-      (e.kind === 'appeared' ? 'border-emerald-500' : 'border-slate-600');
+    row.className = 'ev' + (e.kind === 'appeared' ? '' : ' out');
 
+    const glyph = document.createElement('span');
+    glyph.className = 'g';
+    glyph.textContent = e.kind === 'appeared' ? '+' : '−';
     const text = document.createElement('span');
-    text.className = e.kind === 'appeared' ? 'text-slate-200' : 'text-slate-400';
+    text.className = 't';
     text.textContent = e.text_ar;
     const when = document.createElement('span');
-    when.className = 'text-xs text-slate-500 mr-auto';
-    when.textContent = t;
+    when.className = 'when';
+    when.textContent = clockTime(new Date(e.timestamp * 1000));
 
-    row.append(text, when);
+    row.append(glyph, text, when);
     feed.prepend(row);
   }
   while (feed.children.length > MAX_EVENT_ROWS) feed.lastElementChild.remove();
@@ -320,22 +785,31 @@ function onCaption(m) {
   const log = el('log');
   if (log.dataset.seeded !== '1') { log.innerHTML = ''; log.dataset.seeded = '1'; }
 
-  const t = new Date().toLocaleTimeString('ar-EG', {
-    hour: '2-digit', minute: '2-digit', second: '2-digit'
-  });
-  const div = document.createElement('div');
-  div.className = 'bg-slate-800/60 rounded-lg p-3 border-r-2 ' +
-    (m.error ? 'border-rose-500' : 'border-sky-500');
+  captionCount += 1;
+  const div = document.createElement('article');
+  div.className = 'cap' + (m.error ? ' err' : '');
 
-  const when = document.createElement('div');
-  when.className = 'text-xs text-slate-500 mb-1';
-  when.textContent = t;
-  const body = document.createElement('div');
-  body.className = 'caption-text text-sm leading-relaxed';
+  const meta = document.createElement('div');
+  meta.className = 'cap-meta eyebrow';
+  const k = document.createElement('span');
+  k.className = 'k';
+  k.textContent = String(captionCount).padStart(3, '0');
+  const when = document.createElement('span');
+  when.textContent = clockTime(new Date());
+  meta.append(k, when);
+  if (!m.error) {
+    const lat = document.createElement('span');
+    lat.textContent = `${m.latency_ms} ms`;
+    meta.append(lat);
+  }
+
+  const body = document.createElement('p');
+  body.className = 'cap-text';
   body.textContent = m.text;   // textContent: model output never becomes HTML
 
-  div.append(when, body);
+  div.append(meta, body);
   log.prepend(div);
+  log.scrollTop = 0;
   while (log.children.length > 10) log.lastElementChild.remove();
 }
 
