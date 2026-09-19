@@ -1,0 +1,27 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Deliberately not requirements.txt: torch is a 2 GB download and mlx is
+      # Apple-Silicon-only, so neither can run here. detector.py and vlm.py both
+      # defer those imports past module scope, which is what lets the whole suite
+      # run on a Linux runner in seconds with three light dependencies.
+      - name: Install test dependencies
+        run: pip install pytest pillow numpy
+
+      - name: Run tests
+        run: pytest
