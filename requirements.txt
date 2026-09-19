@@ -1,0 +1,25 @@
+--extra-index-url https://pypi.org/simple
+
+# --- web server ---
+fastapi==0.141.1
+uvicorn[standard]==0.52.1
+websockets==17.0.1
+
+# --- imaging ---
+pillow==12.3.0
+numpy==2.5.1
+
+# --- VLM (Apple MLX) ---
+mlx==0.32.0
+mlx-vlm==0.6.10
+
+# --- detection (PyTorch / MPS) ---
+torch==2.13.0
+torchvision==0.28.0
+rfdetr==1.9.1
+
+# --- model downloads ---
+huggingface_hub==1.26.0
+
+# --- tests (no models required: `pytest` from the project root) ---
+pytest==9.1.1

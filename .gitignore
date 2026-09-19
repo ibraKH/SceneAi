@@ -1,0 +1,24 @@
+# --- virtualenvs (the local one is ~1.3 GB) ---
+.venv/
+venv/
+env/
+
+# --- python bytecode / build artefacts ---
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# --- model weights and partial downloads ---
+models/
+*.pth
+*.safetensors
+*.incomplete
+
+# --- logs and os cruft ---
+*.log
+.DS_Store
+
+# --- local project notes ---
+ARCHITECTURE.md

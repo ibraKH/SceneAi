@@ -1,0 +1,8 @@
+# Not a packaged project — this file exists only to configure pytest.
+# Runtime dependencies live in requirements.txt and are installed by setup.sh.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The suite deliberately touches neither a model nor the network, so it should
+# stay fast. If a test ever needs a GPU, it belongs somewhere else.
+addopts = "-q"
